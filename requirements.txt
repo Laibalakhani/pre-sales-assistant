@@ -3,3 +3,4 @@ pymupdf
 pandas
 sumy
 python-docx
+nltk
