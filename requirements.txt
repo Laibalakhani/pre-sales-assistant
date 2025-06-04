@@ -1,3 +1,5 @@
 streamlit
-PyMuPDF
+pymupdf
+pandas
 sumy
+python-docx
