@@ -4,61 +4,45 @@ import docx
 import pandas as pd
 import io
 import re
+from transformers import pipeline
+import torch
 
-from sumy.parsers.plaintext import PlaintextParser
-from sumy.nlp.tokenizers import Tokenizer
-from sumy.summarizers.text_rank import TextRankSummarizer
+# Set the Streamlit page config
+st.set_page_config(page_title="Pre-Sales Assistant")
 
-import nltk
-import os
+# Load the Hugging Face summarizer
+@st.cache_resource(show_spinner=False)
+def load_summarizer():
+    return pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
 
-nltk_data_path = os.path.join(os.path.expanduser("~"), "nltk_data")
-nltk.data.path.append(nltk_data_path)
-try:
-    nltk.data.find("tokenizers/punkt")
-except LookupError:
-    nltk.download("punkt", download_dir=nltk_data_path)
-    
-st.set_page_config(page_title="Pre-Sales Assistant", layout="centered")
+summarizer = load_summarizer()
 
+# Extract text from supported file types
 def extract_text(file):
-    file.seek(0)  # Important to reset pointer for repeated reads
     if file.type == "application/pdf":
         doc = fitz.open(stream=file.read(), filetype="pdf")
         text = ""
         for page in doc:
             text += page.get_text()
-        return text.strip()
+        return text
 
     elif file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-        file.seek(0)
         doc = docx.Document(io.BytesIO(file.read()))
-        fullText = [para.text for para in doc.paragraphs if para.text.strip() != '']
-        return '\n'.join(fullText).strip()
+        return "\n".join(para.text for para in doc.paragraphs)
 
-    elif file.type in ["application/vnd.ms-excel",
-                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]:
-        file.seek(0)
+    elif file.type in ["application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]:
         xls = pd.ExcelFile(file)
         texts = []
         for sheet_name in xls.sheet_names:
             df = xls.parse(sheet_name)
             texts.append(df.to_string(index=False))
-        return '\n\n'.join(texts).strip()
+        return '\n\n'.join(texts)
+
     else:
-        return ""
+        return "Unsupported file type."
 
-def summarize_text(text, sentences_count=25):
-    # If text too small, just return text
-    if len(text.split()) < 50:
-        return text
-
-    parser = PlaintextParser.from_string(text, Tokenizer("english"))
-    summarizer = TextRankSummarizer()
-    summary = summarizer(parser.document, sentences_count)
-    return ' '.join(str(sentence) for sentence in summary).strip()
-
-def split_into_chunks(text, max_len=500):
+# Split text into manageable chunks for summarization and QA
+def split_into_chunks(text, max_len=1000):
     chunks = []
     start = 0
     while start < len(text):
@@ -71,6 +55,16 @@ def split_into_chunks(text, max_len=500):
         start = end
     return chunks
 
+# Summarize using Hugging Face summarizer
+def summarize_text(text, max_length=400):
+    chunks = split_into_chunks(text, max_len=1000)
+    summaries = []
+    for chunk in chunks:
+        summary = summarizer(chunk, max_length=max_length, min_length=30, do_sample=False)[0]['summary_text']
+        summaries.append(summary)
+    return " ".join(summaries)
+
+# Simple keyword-based answer matching from document
 def find_answer(question, text_chunks):
     question_words = set(re.findall(r'\w+', question.lower()))
     best_chunk = None
@@ -85,29 +79,25 @@ def find_answer(question, text_chunks):
 
     return best_chunk or "Sorry, I couldn't find the answer in the document."
 
+# UI starts here
 st.title("🤖 Pre-Sales Assistant")
 
-uploaded_file = st.file_uploader(
-    "📄 Upload your document",
-    type=['pdf', 'docx', 'xls', 'xlsx']
-)
+uploaded_file = st.file_uploader("📄 Upload your document", type=['pdf', 'docx', 'xls', 'xlsx'])
 
 if uploaded_file:
     full_text = extract_text(uploaded_file)
-    if not full_text:
-        st.warning("Sorry, this file type is not supported or contains no readable text.")
-    else:
-        st.subheader("Extracted Text Summary")
-        summary_text = summarize_text(full_text, sentences_count=25)
-        st.write(summary_text)
 
-        st.download_button("Download Summary", summary_text, file_name="summary.txt")
-        st.download_button("Download Full Text", full_text, file_name="full_text.txt")
+    st.subheader("Extracted Text Summary")
+    summary_text = summarize_text(full_text, max_length=400)
+    st.write(summary_text)
 
-        question = st.text_input("Ask a question:")
+    st.download_button("📥 Download Summary", summary_text, file_name="summary.txt")
+    st.download_button("📥 Download Full Text", full_text, file_name="full_text.txt")
 
-        if st.button("Get Answer") and question.strip() != "":
-            chunks = split_into_chunks(full_text)
-            answer = find_answer(question, chunks)
-            st.markdown("### Answer:")
-            st.write(answer)
+    question = st.text_input("🤖 Ask a question:")
+
+    if st.button("Get Answer") and question.strip() != "":
+        chunks = split_into_chunks(full_text)
+        answer = find_answer(question, chunks)
+        st.markdown("### 🧠 Answer:")
+        st.write(answer)
