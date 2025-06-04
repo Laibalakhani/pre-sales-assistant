@@ -6,22 +6,21 @@ import io
 import re
 from transformers import pipeline
 
-# Set the Streamlit page config
-st.set_page_config(page_title="Pre-Sales Assistant")
+# Configure the Streamlit page
+st.set_page_config(page_title="Pre-Sales Assistant", layout="centered")
 
+# Load the summarization model once
 @st.cache_resource(show_spinner=False)
 def load_summarizer():
     return pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
 
 summarizer = load_summarizer()
 
+# Extract text from supported files
 def extract_text(file):
     if file.type == "application/pdf":
         doc = fitz.open(stream=file.read(), filetype="pdf")
-        text = ""
-        for page in doc:
-            text += page.get_text()
-        return text
+        return "".join(page.get_text() for page in doc)
 
     elif file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
         doc = docx.Document(io.BytesIO(file.read()))
@@ -30,14 +29,14 @@ def extract_text(file):
     elif file.type in ["application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]:
         xls = pd.ExcelFile(file)
         texts = []
-        for sheet_name in xls.sheet_names:
-            df = xls.parse(sheet_name)
+        for sheet in xls.sheet_names:
+            df = xls.parse(sheet)
             texts.append(df.to_string(index=False))
-        return '\n\n'.join(texts)
+        return "\n\n".join(texts)
 
-    else:
-        return ""
+    return ""
 
+# Split text for summarization
 def split_into_chunks(text, max_len=1200):
     chunks = []
     start = 0
@@ -53,6 +52,7 @@ def split_into_chunks(text, max_len=1200):
         start = end
     return chunks
 
+# Generate summary of full document
 def generate_summary(text):
     chunks = split_into_chunks(text)
     if not chunks:
@@ -66,16 +66,17 @@ def generate_summary(text):
         except Exception:
             summaries.append("")
 
-    combined_summary_text = " ".join(summaries).strip()
-    if not combined_summary_text:
+    combined = " ".join(summaries).strip()
+    if not combined:
         return "Could not generate summary from document content."
 
     try:
-        final_summary = summarizer(combined_summary_text, max_length=180, min_length=100, do_sample=False)
-        return final_summary[0]['summary_text']
+        final = summarizer(combined, max_length=180, min_length=100, do_sample=False)
+        return final[0]['summary_text']
     except Exception:
-        return combined_summary_text
+        return combined
 
+# Simple keyword-based question-answering
 def find_answer(question, text_chunks):
     question_words = set(re.findall(r'\w+', question.lower()))
     best_chunk = None
@@ -90,23 +91,23 @@ def find_answer(question, text_chunks):
 
     return best_chunk or "Sorry, I couldn't find the answer in the document."
 
+# UI starts here
 st.title("🤖 Pre-Sales Assistant")
 
-uploaded_file = st.file_uploader("📄 Upload your document", type=['pdf', 'docx', 'xls', 'xlsx'])
+uploaded_file = st.file_uploader("📄 Upload a document (PDF, DOCX, XLSX)", type=['pdf', 'docx', 'xls', 'xlsx'])
 
 if uploaded_file:
     full_text = extract_text(uploaded_file)
 
     if len(full_text.strip()) < 50:
-        st.warning("The document appears to be too short or empty to summarize.")
+        st.warning("⚠️ The document appears too short or empty to summarize.")
     else:
-        with st.spinner("Summarizing the document, please wait..."):
+        with st.spinner("⏳ Summarizing the document, please wait..."):
             summary = generate_summary(full_text)
 
-        st.markdown("### 📝 Document Summary")
+        st.subheader("📝 Document Summary")
         st.write(summary)
 
-        # Add download button for summary as txt file
         st.download_button(
             label="📥 Download Summary",
             data=summary,
@@ -116,10 +117,10 @@ if uploaded_file:
 
         text_chunks = split_into_chunks(full_text, max_len=1200)
 
-        question = st.text_input("Ask a question about the document:")
-        if st.button("Get Answer") and question.strip() != "":
+        question = st.text_input("💬 Ask a question about the document:")
+        if st.button("Get Answer") and question.strip():
             answer = find_answer(question, text_chunks)
-            st.markdown("### 🧠 Answer:")
+            st.subheader("🧠 Answer")
             st.write(answer)
 else:
-    st.info("Please upload a document to get started.")
+    st.info("📁 Please upload a document to begin.")
