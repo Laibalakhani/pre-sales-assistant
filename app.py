@@ -88,17 +88,13 @@ def find_answer(question, text_chunks):
 
 # UI
 st.title("🤖 Pre-Sales Assistant")
+
 uploaded_file = st.file_uploader("📄 Upload your document", type=['pdf', 'docx', 'xls', 'xlsx'])
 
 if uploaded_file:
     full_text = extract_text(uploaded_file)
     st.write("📄 Document Length:", len(full_text), "characters")
     st.text_area("🔍 Preview Extracted Text", full_text[:3000], height=200)
-
-uploaded_file = st.file_uploader("📄 Upload your document", type=['pdf', 'docx', 'xls', 'xlsx'])
-
-if uploaded_file:
-    full_text = extract_text(uploaded_file)
 
     st.subheader("📝 Extracted Text Summary")
 
@@ -124,11 +120,13 @@ if uploaded_file:
         st.warning("Extracted text is too short or empty to summarize.")
 
     st.download_button("📥 Download Full Text", full_text, file_name="full_text.txt")
+
     question = st.text_input("Ask a question:")
     if st.button("Get Answer") and question.strip() != "":
         chunks = split_into_chunks(full_text)
         answer = find_answer(question, chunks)
         st.markdown("### 🧠 Answer:")
         st.write(answer)
+
 else:
     st.info("Please upload a document to proceed.")
