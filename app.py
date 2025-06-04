@@ -88,7 +88,7 @@ def find_answer(question, text_chunks):
 st.title("🤖 Pre-Sales Assistant")
 
 uploaded_file = st.file_uploader(
-    "📄 Upload your document (PDF, Word, Excel)",
+    "📄 Upload your document",
     type=['pdf', 'docx', 'xls', 'xlsx']
 )
 
