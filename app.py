@@ -95,35 +95,40 @@ if uploaded_file:
     st.write("📄 Document Length:", len(full_text), "characters")
     st.text_area("🔍 Preview Extracted Text", full_text[:3000], height=200)
 
+uploaded_file = st.file_uploader("📄 Upload your document", type=['pdf', 'docx', 'xls', 'xlsx'])
+
+if uploaded_file:
+    full_text = extract_text(uploaded_file)
+
     st.subheader("📝 Extracted Text Summary")
 
-if len(full_text.strip()) > 50:
-    with st.spinner("Summarizing... please wait."):
-        try:
-            # Limit number of chunks to avoid overload
-            chunks = split_into_chunks(full_text, max_len=1000)
-            chunks = chunks[:3]  # TEMP: summarize only first 3 chunks
+    if len(full_text.strip()) > 50:
+        with st.spinner("Summarizing... please wait."):
+            try:
+                chunks = split_into_chunks(full_text, max_len=1000)
+                chunks = chunks[:3]  # TEMP: summarize only first 3 chunks
 
-            summaries = []
-            for i, chunk in enumerate(chunks):
-                st.info(f"Summarizing chunk {i + 1}/{len(chunks)}...")
-                result = summarizer(chunk, max_length=400, min_length=30, do_sample=False)
-                summaries.append(result[0]['summary_text'])
+                summaries = []
+                for i, chunk in enumerate(chunks):
+                    st.info(f"Summarizing chunk {i + 1}/{len(chunks)}...")
+                    result = summarizer(chunk, max_length=400, min_length=30, do_sample=False)
+                    summaries.append(result[0]['summary_text'])
 
-            summary_text = " ".join(summaries)
-            st.success("✅ Summary generated.")
-            st.write(summary_text)
-            st.download_button("📥 Download Summary", summary_text, file_name="summary.txt")
-        except Exception as e:
-            st.error(f"❌ Summarization failed: {e}")
+                summary_text = " ".join(summaries)
+                st.success("✅ Summary generated.")
+                st.write(summary_text)
+                st.download_button("📥 Download Summary", summary_text, file_name="summary.txt")
+            except Exception as e:
+                st.error(f"❌ Summarization failed: {e}")
+    else:
+        st.warning("Extracted text is too short or empty to summarize.")
+
+    st.download_button("📥 Download Full Text", full_text, file_name="full_text.txt")
+    question = st.text_input("Ask a question:")
+    if st.button("Get Answer") and question.strip() != "":
+        chunks = split_into_chunks(full_text)
+        answer = find_answer(question, chunks)
+        st.markdown("### 🧠 Answer:")
+        st.write(answer)
 else:
-    st.warning("Extracted text is too short or empty to summarize.")
-
-# Continue rendering the Q&A part
-st.download_button("📥 Download Full Text", full_text, file_name="full_text.txt")
-question = st.text_input("Ask a question:")
-if st.button("Get Answer") and question.strip() != "":
-    chunks = split_into_chunks(full_text)
-    answer = find_answer(question, chunks)
-    st.markdown("### 🧠 Answer:")
-    st.write(answer)
+    st.info("Please upload a document to proceed.")
