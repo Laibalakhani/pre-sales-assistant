@@ -5,19 +5,16 @@ import pandas as pd
 import io
 import re
 from transformers import pipeline
-import torch
 
 # Set the Streamlit page config
 st.set_page_config(page_title="Pre-Sales Assistant")
 
-# Load the Hugging Face summarizer
 @st.cache_resource(show_spinner=False)
 def load_summarizer():
     return pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
 
 summarizer = load_summarizer()
 
-# Extract text from supported file types
 def extract_text(file):
     if file.type == "application/pdf":
         doc = fitz.open(stream=file.read(), filetype="pdf")
@@ -39,10 +36,9 @@ def extract_text(file):
         return '\n\n'.join(texts)
 
     else:
-        return "Unsupported file type."
+        return ""
 
-# Split text into manageable chunks
-def split_into_chunks(text, max_len=1000):
+def split_into_chunks(text, max_len=1200):
     chunks = []
     start = 0
     while start < len(text):
@@ -52,26 +48,34 @@ def split_into_chunks(text, max_len=1000):
         if last_period != -1:
             end = start + last_period + 1
         chunk = text[start:end].strip()
-        if chunk:  # Skip empty
+        if chunk:
             chunks.append(chunk)
         start = end
     return chunks
 
-# Summarize using Hugging Face summarizer
-def summarize_text(text, max_length=400):
-    chunks = split_into_chunks(text, max_len=1000)
-    summaries = []
+def generate_summary(text):
+    chunks = split_into_chunks(text)
+    if not chunks:
+        return "The document is empty or could not be processed."
 
+    summaries = []
     for chunk in chunks:
         try:
-            result = summarizer(chunk, max_length=max_length, min_length=30, do_sample=False)
+            result = summarizer(chunk, max_length=150, min_length=80, do_sample=False)
             summaries.append(result[0]['summary_text'])
-        except Exception as e:
-            summaries.append(f"[Error summarizing chunk: {e}]")
+        except Exception:
+            summaries.append("")
 
-    return " ".join(summaries) if summaries else "[No summary generated.]"
+    combined_summary_text = " ".join(summaries).strip()
+    if not combined_summary_text:
+        return "Could not generate summary from document content."
 
-# Simple keyword-based answer matching
+    try:
+        final_summary = summarizer(combined_summary_text, max_length=180, min_length=100, do_sample=False)
+        return final_summary[0]['summary_text']
+    except Exception:
+        return combined_summary_text
+
 def find_answer(question, text_chunks):
     question_words = set(re.findall(r'\w+', question.lower()))
     best_chunk = None
@@ -86,47 +90,36 @@ def find_answer(question, text_chunks):
 
     return best_chunk or "Sorry, I couldn't find the answer in the document."
 
-# UI
 st.title("🤖 Pre-Sales Assistant")
 
 uploaded_file = st.file_uploader("📄 Upload your document", type=['pdf', 'docx', 'xls', 'xlsx'])
 
 if uploaded_file:
     full_text = extract_text(uploaded_file)
-    st.write("📄 Document Length:", len(full_text), "characters")
-    st.text_area("🔍 Preview Extracted Text", full_text[:3000], height=200)
 
-    st.subheader("📝 Extracted Text Summary")
-
-    if len(full_text.strip()) > 50:
-        with st.spinner("Summarizing... please wait."):
-            try:
-                chunks = split_into_chunks(full_text, max_len=1000)
-                chunks = chunks[:3]  # TEMP: summarize only first 3 chunks
-
-                summaries = []
-                for i, chunk in enumerate(chunks):
-                    st.info(f"Summarizing chunk {i + 1}/{len(chunks)}...")
-                    result = summarizer(chunk, max_length=400, min_length=30, do_sample=False)
-                    summaries.append(result[0]['summary_text'])
-
-                summary_text = " ".join(summaries)
-                st.success("✅ Summary generated.")
-                st.write(summary_text)
-                st.download_button("📥 Download Summary", summary_text, file_name="summary.txt")
-            except Exception as e:
-                st.error(f"❌ Summarization failed: {e}")
+    if len(full_text.strip()) < 50:
+        st.warning("The document appears to be too short or empty to summarize.")
     else:
-        st.warning("Extracted text is too short or empty to summarize.")
+        with st.spinner("Summarizing the document, please wait..."):
+            summary = generate_summary(full_text)
 
-    st.download_button("📥 Download Full Text", full_text, file_name="full_text.txt")
+        st.markdown("### 📝 Document Summary")
+        st.write(summary)
 
-    question = st.text_input("Ask a question:")
-    if st.button("Get Answer") and question.strip() != "":
-        chunks = split_into_chunks(full_text)
-        answer = find_answer(question, chunks)
-        st.markdown("### 🧠 Answer:")
-        st.write(answer)
+        # Add download button for summary as txt file
+        st.download_button(
+            label="📥 Download Summary",
+            data=summary,
+            file_name="document_summary.txt",
+            mime="text/plain"
+        )
 
+        text_chunks = split_into_chunks(full_text, max_len=1200)
+
+        question = st.text_input("Ask a question about the document:")
+        if st.button("Get Answer") and question.strip() != "":
+            answer = find_answer(question, text_chunks)
+            st.markdown("### 🧠 Answer:")
+            st.write(answer)
 else:
-    st.info("Please upload a document to proceed.")
+    st.info("Please upload a document to get started.")
