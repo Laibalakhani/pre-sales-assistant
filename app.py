@@ -5,6 +5,7 @@ import pandas as pd
 import io
 import re
 import nltk
+nltk.download("punkt")
 
 try:
     nltk.data.find('tokenizers/punkt')
