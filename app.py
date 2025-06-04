@@ -105,7 +105,7 @@ if uploaded_file:
 
     st.download_button("📥 Download Full Text", full_text, file_name="full_text.txt")
 
-    question = st.text_input("🤖 Ask a question:")
+    question = st.text_input("Ask a question:")
     if st.button("Get Answer") and question.strip() != "":
         chunks = split_into_chunks(full_text)
         answer = find_answer(question, chunks)
