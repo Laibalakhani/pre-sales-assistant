@@ -4,6 +4,13 @@ import docx
 import pandas as pd
 import io
 import re
+import nltk
+
+try:
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt')
+
 from sumy.parsers.plaintext import PlaintextParser
 from sumy.nlp.tokenizers import Tokenizer
 from sumy.summarizers.text_rank import TextRankSummarizer
@@ -74,10 +81,10 @@ def find_answer(question, text_chunks):
 
     return best_chunk or "Sorry, I couldn't find the answer in the document."
 
-st.title("🤖 Pre-Sales Assistant")
+st.title("Multi-File Pre-Sales Assistant")
 
 uploaded_file = st.file_uploader(
-    "Upload your document (PDF, Word, Excel)", 
+    "Upload your document (PDF, Word, Excel)",
     type=['pdf', 'docx', 'xls', 'xlsx']
 )
 
