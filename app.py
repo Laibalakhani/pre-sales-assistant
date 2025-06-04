@@ -8,7 +8,7 @@ from sumy.parsers.plaintext import PlaintextParser
 from sumy.nlp.tokenizers import Tokenizer
 from sumy.summarizers.text_rank import TextRankSummarizer
 
-st.set_page_config(page_title="Multi-File Pre-Sales Assistant", layout="centered")
+st.set_page_config(page_title="Pre-Sales Assistant", layout="centered")
 
 def extract_text(file):
     file.seek(0)  # Important to reset pointer for repeated reads
