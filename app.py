@@ -74,7 +74,7 @@ def find_answer(question, text_chunks):
 
     return best_chunk or "Sorry, I couldn't find the answer in the document."
 
-st.title("Multi-File Pre-Sales Assistant")
+st.title("🤖 Pre-Sales Assistant")
 
 uploaded_file = st.file_uploader(
     "Upload your document (PDF, Word, Excel)", 
