@@ -4,20 +4,21 @@ import docx
 import pandas as pd
 import io
 import re
+
 from sumy.parsers.plaintext import PlaintextParser
 from sumy.nlp.tokenizers import Tokenizer
 from sumy.summarizers.text_rank import TextRankSummarizer
 
 import nltk
+import os
+
+nltk_data_path = os.path.join(os.path.expanduser("~"), "nltk_data")
+nltk.data.path.append(nltk_data_path)
 try:
     nltk.data.find("tokenizers/punkt")
 except LookupError:
-    nltk.download("punkt")
-
-from sumy.parsers.plaintext import PlaintextParser
-from sumy.nlp.tokenizers import Tokenizer
-from sumy.summarizers.text_rank import TextRankSummarizer
-
+    nltk.download("punkt", download_dir=nltk_data_path)
+    
 st.set_page_config(page_title="Pre-Sales Assistant", layout="centered")
 
 def extract_text(file):
