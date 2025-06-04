@@ -41,7 +41,7 @@ def extract_text(file):
     else:
         return "Unsupported file type."
 
-# Split text into manageable chunks for summarization and QA
+# Split text into manageable chunks
 def split_into_chunks(text, max_len=1000):
     chunks = []
     start = 0
@@ -51,7 +51,9 @@ def split_into_chunks(text, max_len=1000):
         last_period = snippet.rfind('.')
         if last_period != -1:
             end = start + last_period + 1
-        chunks.append(text[start:end].strip())
+        chunk = text[start:end].strip()
+        if chunk:  # Skip empty
+            chunks.append(chunk)
         start = end
     return chunks
 
@@ -59,12 +61,17 @@ def split_into_chunks(text, max_len=1000):
 def summarize_text(text, max_length=400):
     chunks = split_into_chunks(text, max_len=1000)
     summaries = []
-    for chunk in chunks:
-        summary = summarizer(chunk, max_length=max_length, min_length=30, do_sample=False)[0]['summary_text']
-        summaries.append(summary)
-    return " ".join(summaries)
 
-# Simple keyword-based answer matching from document
+    for chunk in chunks:
+        try:
+            result = summarizer(chunk, max_length=max_length, min_length=30, do_sample=False)
+            summaries.append(result[0]['summary_text'])
+        except Exception as e:
+            summaries.append(f"[Error summarizing chunk: {e}]")
+
+    return " ".join(summaries) if summaries else "[No summary generated.]"
+
+# Simple keyword-based answer matching
 def find_answer(question, text_chunks):
     question_words = set(re.findall(r'\w+', question.lower()))
     best_chunk = None
@@ -79,23 +86,26 @@ def find_answer(question, text_chunks):
 
     return best_chunk or "Sorry, I couldn't find the answer in the document."
 
-# UI starts here
+# UI
 st.title("🤖 Pre-Sales Assistant")
-
 uploaded_file = st.file_uploader("📄 Upload your document", type=['pdf', 'docx', 'xls', 'xlsx'])
 
 if uploaded_file:
     full_text = extract_text(uploaded_file)
+    st.write("📄 Document Length:", len(full_text), "characters")
+    st.text_area("🔍 Preview Extracted Text", full_text[:3000], height=200)
 
-    st.subheader("Extracted Text Summary")
-    summary_text = summarize_text(full_text, max_length=400)
-    st.write(summary_text)
+    st.subheader("📝 Extracted Text Summary")
+    if len(full_text.strip()) > 50:
+        summary_text = summarize_text(full_text, max_length=400)
+        st.write(summary_text)
+        st.download_button("📥 Download Summary", summary_text, file_name="summary.txt")
+    else:
+        st.warning("Extracted text is too short or empty to summarize.")
 
-    st.download_button("📥 Download Summary", summary_text, file_name="summary.txt")
     st.download_button("📥 Download Full Text", full_text, file_name="full_text.txt")
 
     question = st.text_input("🤖 Ask a question:")
-
     if st.button("Get Answer") and question.strip() != "":
         chunks = split_into_chunks(full_text)
         answer = find_answer(question, chunks)
