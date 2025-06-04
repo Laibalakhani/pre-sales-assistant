@@ -1,6 +1,6 @@
 streamlit
-pymupdf
-pandas
-sumy
+PyMuPDF
 python-docx
-nltk
+pandas
+transformers
+torch
