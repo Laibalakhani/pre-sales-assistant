@@ -1,7 +1,3 @@
-import os
-os.environ["STREAMLIT_WATCHER_TYPE"] = "none"
-
-import streamlit as st
 import fitz  # PyMuPDF
 import docx
 import pandas as pd
