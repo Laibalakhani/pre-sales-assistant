@@ -6,42 +6,36 @@ import io
 import re
 from transformers import pipeline
 
-# Configure the Streamlit page
+# Page config
 st.set_page_config(page_title="Pre-Sales Assistant", layout="centered")
 
-# Load summarizer model only once
+# Load transformers models once
 @st.cache_resource(show_spinner=False)
-def load_summarizer():
-    return pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
+def load_models():
+    summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
+    qa_model = pipeline("question-answering", model="distilbert-base-uncased-distilled-squad")
+    return summarizer, qa_model
 
-summarizer = load_summarizer()
+summarizer, qa_model = load_models()
 
-# Extract text from various supported file types
+# Extract text from PDF, DOCX, XLS(X)
 def extract_text(file):
     if file.type == "application/pdf":
         doc = fitz.open(stream=file.read(), filetype="pdf")
         return "".join(page.get_text() for page in doc)
-
     elif file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
         doc = docx.Document(io.BytesIO(file.read()))
         return "\n".join(para.text for para in doc.paragraphs)
-
     elif file.type in ["application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]:
         xls = pd.ExcelFile(file)
-        texts = []
-        for sheet in xls.sheet_names:
-            df = xls.parse(sheet)
-            texts.append(df.to_string(index=False))
-        return "\n\n".join(texts)
-
+        return "\n\n".join(df.to_string(index=False) for df in [xls.parse(s) for s in xls.sheet_names])
     return ""
 
-# Split text into reasonably sized chunks
+# Split long text into chunks for summarization
 def split_into_chunks(text, max_len=1200):
-    chunks = []
-    start = 0
+    chunks, start = [], 0
     while start < len(text):
-        end = start + max_len
+        end = min(start + max_len, len(text))
         snippet = text[start:end]
         last_period = snippet.rfind('.')
         if last_period != -1:
@@ -52,82 +46,74 @@ def split_into_chunks(text, max_len=1200):
         start = end
     return chunks
 
-# Generate a summary with optional fast mode
+# Generate improved summary
 def generate_summary(text, fast_mode=False):
-    chunks = split_into_chunks(text)
-    if not chunks:
-        return "The document is empty or could not be processed."
-
+    chunks = split_into_chunks(text, max_len=1200)
     if fast_mode:
-        chunks = chunks[:3]  # Only summarize first 3 chunks for speed
+        chunks = chunks[:3]
+    if not chunks:
+        return "❌ The document is empty or could not be processed."
 
     summaries = []
     for i, chunk in enumerate(chunks):
-        try:
-            with st.spinner(f"Summarizing part {i + 1} of {len(chunks)}..."):
-                result = summarizer(chunk, max_length=150, min_length=80, do_sample=False)
+        with st.spinner(f"Summarizing part {i + 1} of {len(chunks)}..."):
+            try:
+                result = summarizer(chunk, max_length=200, min_length=100, do_sample=False)
                 summaries.append(result[0]['summary_text'])
-        except Exception:
-            summaries.append("")
+            except Exception:
+                continue
 
-    combined = " ".join(summaries).strip()
-    if not combined:
-        return "Could not generate summary from document content."
-
+    full_summary_input = " ".join(summaries)
     try:
-        final = summarizer(combined, max_length=180, min_length=100, do_sample=False)
+        final = summarizer(full_summary_input, max_length=400, min_length=200, do_sample=False)
         return final[0]['summary_text']
     except Exception:
-        return combined
+        return full_summary_input
 
-# Simple keyword-based QA using original text chunks
+# QA using transformer model
 def find_answer(question, text_chunks):
-    question_words = set(re.findall(r'\w+', question.lower()))
-    best_chunk = None
-    max_matches = 0
+    context = " ".join(text_chunks[:10])  # Use first few chunks to reduce overhead
+    try:
+        result = qa_model(question=question, context=context)
+        return result['answer']
+    except:
+        return "❌ Sorry, I couldn't find the answer in the document."
 
-    for chunk in text_chunks:
-        chunk_words = set(re.findall(r'\w+', chunk.lower()))
-        common_words = question_words.intersection(chunk_words)
-        if len(common_words) > max_matches:
-            max_matches = len(common_words)
-            best_chunk = chunk
-
-    return best_chunk or "Sorry, I couldn't find the answer in the document."
-
-# UI layout starts here
+# Start UI
 st.title("🤖 Pre-Sales Assistant")
 
 uploaded_file = st.file_uploader("📄 Upload a document (PDF, DOCX, XLSX)", type=['pdf', 'docx', 'xls', 'xlsx'])
 
 if uploaded_file:
     full_text = extract_text(uploaded_file)
-
     if len(full_text.strip()) < 50:
         st.warning("⚠️ The document appears too short or empty to summarize.")
     else:
         fast_mode = st.checkbox("⚡ Enable Fast Summary Mode (Quick but Less Detailed)", value=True)
 
         if st.button("Generate Summary"):
-            with st.spinner("⏳ Summarizing the document, please wait..."):
+            with st.spinner("⏳ Generating summary..."):
                 summary = generate_summary(full_text, fast_mode)
+                st.session_state.summary = summary
+                st.session_state.text_chunks = split_into_chunks(full_text)
 
+        if "summary" in st.session_state:
             st.subheader("📝 Document Summary")
-            st.write(summary)
+            st.write(st.session_state.summary)
 
             st.download_button(
                 label="📥 Download Summary",
-                data=summary,
+                data=st.session_state.summary,
                 file_name="document_summary.txt",
                 mime="text/plain"
             )
 
-        text_chunks = split_into_chunks(full_text, max_len=1200)
-
-        question = st.text_input("💬 Ask a question about the original document:")
-        if st.button("Get Answer") and question.strip():
-            answer = find_answer(question, text_chunks)
-            st.subheader("🧠 Answer")
-            st.write(answer)
+            st.subheader("💬 Ask Questions About the Document")
+            question = st.text_input("Type your question:")
+            if st.button("Get Answer") and question.strip():
+                with st.spinner("🔍 Searching for the answer..."):
+                    answer = find_answer(question, st.session_state.text_chunks)
+                    st.subheader("🧠 Answer")
+                    st.write(answer)
 else:
     st.info("📁 Please upload a document to begin.")
